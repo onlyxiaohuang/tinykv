@@ -14,13 +14,19 @@
 
 package raft
 
-import pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+import (
+	"fmt"
+	"log"
+	"math"
+
+	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+)
 
 // RaftLog manage the log entries, its struct look like:
 //
-//  snapshot/first.....applied....committed....stabled.....last
-//  --------|------------------------------------------------|
-//                            log entries
+//	snapshot/first.....applied....committed....stabled.....last
+//	--------|------------------------------------------------|
+//	                          log entries
 //
 // for simplify the RaftLog implement should manage all log entries
 // that not truncated
@@ -50,13 +56,35 @@ type RaftLog struct {
 	pendingSnapshot *pb.Snapshot
 
 	// Your Data Here (2A).
+	lastAppend uint64
 }
 
 // newLog returns log using the given storage. It recovers the log
 // to the state that it just commits and applies the latest snapshot.
 func newLog(storage Storage) *RaftLog {
 	// Your Code Here (2A).
-	return nil
+	if storage == nil {
+		log.Panic("storage cannot be nil")
+	}
+
+	raft := new(RaftLog)
+	raft.storage = storage
+	firstindex, _ := storage.FirstIndex()
+	lastindex, _ := storage.LastIndex()
+
+	hs, _, _ := storage.InitialState()
+
+	raft.committed = hs.Commit
+	raft.applied = firstindex - 1
+	raft.stabled = lastindex
+
+	raft.entries, _ = storage.Entries(firstindex, lastindex+1)
+
+	//(2C) initialize pendingSnapshot
+	raft.pendingSnapshot = nil
+
+	raft.lastAppend = math.MaxInt64
+	return raft
 }
 
 // We need to compact the log entries in some point of time like
@@ -66,34 +94,101 @@ func (l *RaftLog) maybeCompact() {
 	// Your Code Here (2C).
 }
 
-// allEntries return all the entries not compacted.
-// note, exclude any dummy entries from the return value.
-// note, this is one of the test stub functions you need to implement.
-func (l *RaftLog) allEntries() []pb.Entry {
-	// Your Code Here (2A).
-	return nil
-}
-
 // unstableEntries return all the unstable entries
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
-	return nil
+	entries := make([]pb.Entry, 0)
+	if len(l.entries) > 0 {
+		firstindex := l.FirstIndex()
+		lastindex := l.LastIndex()
+		if l.stabled < firstindex { //storage全是不稳定的
+			entries = l.entries
+		}
+		if l.stabled < lastindex && l.stabled >= firstindex { // firstindex <= stabled < lastindex
+			entries = l.entries[l.stabled-firstindex+1:]
+		}
+	}
+
+	return entries
 }
 
 // nextEnts returns all the committed but not applied entries
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
-	return nil
+	firstIndex := l.FirstIndex()
+	appliedIndex := l.applied
+	commitedIndex := l.committed
+	if len(l.entries) > 0 {
+		if appliedIndex >= firstIndex-1 && commitedIndex >= firstIndex-1 && appliedIndex < commitedIndex && commitedIndex <= l.LastIndex() {
+			return l.entries[appliedIndex-firstIndex+1 : commitedIndex-firstIndex+1]
+		}
+	}
+	return make([]pb.Entry, 0)
+}
+
+func (l *RaftLog) FirstIndex() uint64 {
+	// Your Code Here (2A).
+	if len(l.entries) == 0 { //initialize
+		index, _ := l.storage.FirstIndex()
+		return index
+	}
+	return l.entries[0].Index
 }
 
 // LastIndex return the last index of the log entries
 func (l *RaftLog) LastIndex() uint64 {
 	// Your Code Here (2A).
-	return 0
+	if len(l.entries) == 0 { // initialize
+		index, _ := l.storage.LastIndex()
+		return index
+	}
+	return l.entries[len(l.entries)-1].Index
 }
 
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
+	if len(l.entries) == 0 {
+		term, err := l.storage.Term(i)
+		//if debug == 1 {
+		//	log.Printf("term is %d", term)
+		//}
+
+		if err != nil {
+			return 0, err
+		}
+		return term, nil
+	}
+	firstindex := l.FirstIndex()
+	lastindex := l.LastIndex()
+	if i >= firstindex && i <= lastindex {
+		return l.entries[i-firstindex].Term, nil
+	}
+
 	return 0, nil
+}
+
+func (l *RaftLog) appliedto(to uint64) {
+	l.applied = to
+}
+func (l *RaftLog) commitedto(to uint64) {
+	if l.committed < to {
+		l.committed = to
+	}
+}
+
+// allEntries return all the entries not compacted.
+// note, exclude any dummy entries from the return value.
+// note, this is one of the test stub functions you need to implement.
+func (l *RaftLog) allEntries() []pb.Entry {
+	// Your Code Here (2A).
+
+	firstindex := l.FirstIndex()
+	lastindex := l.LastIndex()
+
+	if debug == 3 {
+		fmt.Printf("first index is %d,last index is %d\n", firstindex, lastindex)
+	}
+
+	return l.entries
 }

@@ -254,6 +254,9 @@ func TestCandidateFallback2AA(t *testing.T) {
 			t.Fatalf("unexpected state = %s, want %s", r.State, StateCandidate)
 		}
 
+		//if debug == 2 {
+		//	fmt.Printf("now r.id is %d,state is %s\n", r.id, r.State)
+		//}
 		r.Step(tt)
 
 		if g := r.State; g != StateFollower {
