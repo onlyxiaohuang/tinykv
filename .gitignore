@@ -1,0 +1,10 @@
+.idea*
+.vscode*
+node/node
+unikv/unikv
+bin/*
+_tools
+/vendor
+kv/server/kv/000000.vlog
+kv/server/raft/000000.vlog
+pkg/
