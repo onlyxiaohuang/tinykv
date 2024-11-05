@@ -92,6 +92,14 @@ func newLog(storage Storage) *RaftLog {
 // grow unlimitedly in memory
 func (l *RaftLog) maybeCompact() {
 	// Your Code Here (2C).
+	remainedIndex, _ := l.storage.FirstIndex() // 在此之前的均被压缩
+	if len(l.entries) > 0 {
+		if remainedIndex > l.LastIndex() {
+			l.entries = nil
+		} else if remainedIndex >= l.FirstIndex() {
+			l.entries = l.entries[remainedIndex-l.FirstIndex():]
+		}
+	}
 }
 
 // unstableEntries return all the unstable entries

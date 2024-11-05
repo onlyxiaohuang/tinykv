@@ -937,6 +937,61 @@ func (r *Raft) handleTransferLeader(m pb.Message) {
 // handleSnapshot handle Snapshot RPC request
 func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
+	if r.Term < m.Term {
+		r.Term = m.Term
+		if r.State != StateFollower {
+			r.becomeFollower(r.Term, None)
+		}
+	}
+	if m.Term < r.Term {
+		return
+	}
+
+	metaData := m.Snapshot.Metadata
+	shotIndex := metaData.Index
+	shotTerm := metaData.Term
+	shotConf := metaData.ConfState
+
+	if shotIndex < r.RaftLog.committed || shotIndex < r.RaftLog.FirstIndex() {
+		return
+	}
+	if r.Lead != m.From {
+		r.Lead = m.From
+	}
+
+	if len(r.RaftLog.entries) > 0 {
+		if shotIndex >= r.RaftLog.LastIndex() {
+			r.RaftLog.entries = nil
+		} else {
+			r.RaftLog.entries = r.RaftLog.entries[shotIndex-r.RaftLog.FirstIndex()+1:]
+		}
+	}
+
+	r.RaftLog.committed = shotIndex
+	r.RaftLog.applied = shotIndex
+	r.RaftLog.stabled = shotIndex
+
+	if shotConf != nil {
+		r.Prs = make(map[uint64]*Progress)
+		for _, node := range shotConf.Nodes {
+			r.Prs[node] = &Progress{}
+			r.Prs[node].Next = r.RaftLog.LastIndex() + 1
+			r.Prs[node].Match = 0
+		}
+	}
+
+	if r.RaftLog.LastIndex() < shotIndex {
+		entry := pb.Entry{
+			EntryType: pb.EntryType_EntryNormal,
+			Index:     shotIndex,
+			Term:      shotTerm,
+		}
+		r.RaftLog.entries = append(r.RaftLog.entries, entry)
+	}
+
+	r.RaftLog.pendingSnapshot = m.Snapshot
+	r.sendAppendResponse(false, m.From, r.RaftLog.LastIndex())
+
 }
 
 // addNode add a new node to raft group

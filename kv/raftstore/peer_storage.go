@@ -348,7 +348,61 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	// and send RegionTaskApply task to region worker through ps.regionSched, also remember call ps.clearMeta
 	// and ps.clearExtraData to delete stale data
 	// Your Code Here (2C).
-	return nil, nil
+
+	if ps.isInitialized() {
+		if err := ps.clearMeta(kvWB, raftWB); err != nil {
+			log.Panic(err)
+			return nil, err
+		}
+		ps.clearExtraData(snapData.Region)
+	}
+
+	ps.raftState.LastIndex = snapshot.Metadata.Index
+	ps.raftState.LastTerm = snapshot.Metadata.Term
+	ps.applyState.AppliedIndex = snapshot.Metadata.Index
+	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
+	ps.applyState.TruncatedState.Term = snapshot.Metadata.Term
+	ps.snapState.StateType = snap.SnapState_Applying
+
+	// kvDB
+	if err := kvWB.SetMeta(meta.ApplyStateKey(snapData.GetRegion().GetId()), ps.applyState); err != nil {
+		log.Panic(err)
+		return nil, err
+	}
+	meta.WriteRegionState(kvWB, snapData.GetRegion(), rspb.PeerState_Normal)
+
+	// raftDB
+	if err := raftWB.SetMeta(meta.RaftStateKey(snapData.GetRegion().GetId()), ps.raftState); err != nil {
+		log.Panic(err)
+		return nil, err
+	}
+
+	//val1, _ := engine_util.GetCF(ps.Engines.Kv, engine_util.CfLock, []byte("k100"))
+	//fmt.Printf("val1 = %s\n", val1)
+
+	ch := make(chan bool, 1)
+	ps.regionSched <- &runner.RegionTaskApply{
+		RegionId: snapData.Region.GetId(),
+		Notifier: ch,
+		SnapMeta: snapshot.Metadata,
+		StartKey: snapData.Region.GetStartKey(),
+		EndKey:   snapData.Region.GetEndKey(),
+	}
+
+	if !(<-ch) {
+		return nil, nil
+	}
+
+	//val2, _ := engine_util.GetCF(ps.Engines.Kv, engine_util.CfLock, []byte("k100"))
+	//fmt.Printf("val2 = %s\n", val2)
+
+	applySnapRet := &ApplySnapResult{
+		PrevRegion: ps.Region(),
+		Region:     snapData.Region,
+	}
+
+	return applySnapRet, nil
+
 }
 
 // Save memory states to disk.

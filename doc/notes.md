@@ -184,3 +184,5 @@ project2c 在 project2b 的基础上完成集群的快照功能。分为五个�
  1. 快照生成：在leader节点上，通过快照生成函数生成快照，并将快照发送给follower节点。
  2. 快照分发：在follower节点上，通过快照分发函数接收快照，并将快照发送给leader节点。
 
+2c通过
+![alt text](image-24.png)
