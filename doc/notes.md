@@ -57,6 +57,14 @@ step是一个处理函数，对于不同种类的message进行处理；
 测试的时候可以用vscode本地自带的测试功能，比较方便。此外还可以打debug标记来进行测试。
 
 2a测试
+
+调试方法
+
+1.加一个debug变量
+
+2.利用vscode自带的单项测试
+
+
 ![alt text](image-1.png)
 此处是index超过了下标，需要进一步排查
 调用golang的log库进行调用
@@ -79,12 +87,14 @@ startelection的错误
 少了非
 
 ![alt text](image-7.png)
+
+在handleAppendEntries中，
 这里任期应该是小于等于
 
 ![alt text](image-8.png)
 
 
-可持久化的问题
+应该是返回raftlog中的值，而不是从已经committed的存储中取值。
 
 ![alt text](image-9.png)
 
@@ -185,3 +195,9 @@ project2c 在 project2b 的基础上完成集群的快照功能。分为五个�
 
 2c通过
 ![alt text](image-24.png)
+
+3a
+
+Lead transfer
+
+ 
