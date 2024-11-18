@@ -54,7 +54,7 @@ step是一个处理函数，对于不同种类的message进行处理；
 对于不同的message，它们共用一个结构。所以对于不同的信息，有些字段可能为空。
 分别对于不同的message进行代码的撰写。
 
-测试的时候可以用vscode本地自带的测试功能，比较方便。此外还可以打debug标记来进行测试。
+
 
 2a测试
 
@@ -89,7 +89,7 @@ startelection的错误
 ![alt text](image-7.png)
 
 在handleAppendEntries中，
-这里任期应该是小于等于
+这里任期应该是小于等于。因为可能有term相同而entries不同的candidate/leader。
 
 ![alt text](image-8.png)
 
@@ -103,7 +103,49 @@ startelection的错误
 ![alt text](image-11.png)
 ![alt text](image-12.png)
 
+2b:
+
+    Store：每一个节点叫做一个 store，也就是一个节点上面只有一个 Store。代码里面叫 RaftStore，后面统一使用 RaftStore 代称。
+    Peer：一个 RaftStore 里面会包含多个 peer，一个 RaftStore 里面的所有 peer 公用同一个底层存储，也就是多个 peer 公用同一个 badger 实例。
+    Region：一个 Region 叫做一个 Raft group，一个 region 包含多个 peer，这些 peer 散落在不同的 RaftStore 上。Region 处理的是某一个范围的数据。比如 Region A 处理 0 < k e y < s p l i t ，Region B 处理 s p l i t ≤ k e y < M A X ，两个 Region 各司其职，互不干涉，均有自己的 Leader。
+
+    注意：一个 Region 在一个 RaftStore 上最多只有一个 peer，因为一个 region 里面所有 peer 的数据是一致的，如果在同一个 RaftStore 上面有两个一样的 peer，就毫无意义，并不能增加容灾性。
+
+该项目的架构如下：
+client <-> peer <-> raftstore <-> store
+
+2b中有并发的测试集，可能需要通过修改2a或者更前面的内容来通过测试集。
+未测试transferleader的那部分
+
+![alt text](image-22.png)
+
+一个response的例子
+
+有部分更改涉及到2a的修改 （（之前的一些代码还要改
+
+![alt text](image-23.png)
+2b通过
+
+
+     
+
+project2c 在 project2b 的基础上完成集群的快照功能。分为五个部分：快照生成，快照分发，快照接收，快照应用，日志压缩。
+需要注意的是,2c的测试集需要修改2a的代码，因为2c的测试集需要测试2a的功能。
+
+快照(Snapshot)：快照是一组数据，用来恢复系统状态。
+
+在实际的系统中，不能让日志无限增长，否则系统重启时需要花很长的时间进行回放，从而影响可用性。Raft采用对整个系统进行snapshot来解决，snapshot之前的日志都可以丢弃。
+
+每个副本独立的对自己的系统状态进行snapshot，并且只能对已经提交的日志记录进行snapshot。
+
+2c通过
+![alt text](image-24.png)
+
+
 project 4
+
+事务 ACID 原子性 一致性 隔离性 持久性
+
 primary key(主键)
 primary key是从写入的key中随机选的,如果primary key执行成功,其他的
 key都可以并发执行;如果primary key执行失败,其他的key就不能执行了.
@@ -127,7 +169,9 @@ Data：实际的数据，存在多版本，版本号就是写入事务的 startT
 4a通过
 ![alt text](image-13.png)
 
-prewrite
+4b主要内容
+prewrite & commit
+
 1.检查写入的key是否存在大于startts的write,存在就abort。说明在你的事务开启后，已经存在写入并且提交。
 2.检查是否存在lock（任意时间戳），如果有上锁的数据，那么直接abort
 3.如果通过上述两个检查，则进行写入操作。
@@ -144,7 +188,7 @@ Lock 的 startTs 等于当前事务的 startTs：不可能发生，因为当你�
 
 4b ok
 
-4c
+4c 扫描&回滚
 
 ![alt text](image-17.png)
 
@@ -166,38 +210,6 @@ Lock 的 startTs 等于当前事务的 startTs：不可能发生，因为当你�
 
 ![alt text](2-0.png)
 
-2b:
-
-    Store：每一个节点叫做一个 store，也就是一个节点上面只有一个 Store。代码里面叫 RaftStore，后面统一使用 RaftStore 代称。
-    Peer：一个 RaftStore 里面会包含多个 peer，一个 RaftStore 里面的所有 peer 公用同一个底层存储，也就是多个 peer 公用同一个 badger 实例。
-    Region：一个 Region 叫做一个 Raft group，一个 region 包含多个 peer，这些 peer 散落在不同的 RaftStore 上。Region 处理的是某一个范围的数据。比如 Region A 处理 0 < k e y < s p l i t ，Region B 处理 s p l i t ≤ k e y < M A X ，两个 Region 各司其职，互不干涉，均有自己的 Leader。
-
-    注意：一个 Region 在一个 RaftStore 上最多只有一个 peer，因为一个 region 里面所有 peer 的数据是一致的，如果在同一个 RaftStore 上面有两个一样的 peer，就毫无意义，并不能增加容灾性。
-
-该项目的架构如下：
-client <-> peer <-> raftstore <-> store
-
-2b中有并发的测试集，可能需要通过修改2a或者更前面的内容来通过测试集。
-未测试transferleader的那部分
-
-![alt text](image-22.png)
-
-有部分更改涉及到2a的修改 （（之前的一些代码还要改
-
-![alt text](image-23.png)
-2b通过
-
-
-     
-
-project2c 在 project2b 的基础上完成集群的快照功能。分为五个部分：快照生成，快照分发，快照接收，快照应用，日志压缩。
-需要注意的是,2c的测试集需要修改2a的代码，因为2c的测试集需要测试2a的功能。
-
-2c通过
-![alt text](image-24.png)
-
 3a
 
 Lead transfer
-
- 
