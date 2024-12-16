@@ -997,12 +997,43 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 // addNode add a new node to raft group
 func (r *Raft) addNode(id uint64) {
 	// Your Code Here (3A).
-
+	_, ok := r.Prs[id]
+	if ok {
+		//log.Panic("node exists")
+		return
+	} else {
+		r.Prs[id] = &Progress{
+			Match: 0,
+			Next:  r.RaftLog.LastIndex() + 1,
+		}
+	}
 }
 
 // removeNode remove a node from raft group
 func (r *Raft) removeNode(id uint64) {
 	// Your Code Here (3A).
+	_, ok := r.Prs[id]
+	if !ok {
+		//log.Panic("node dose not exist")
+		return
+	} else {
+		delete(r.Prs, id)
+	}
+
+	// 重算 committed 并同步
+	if r.State == StateLeader {
+		if len(r.Prs) != 0 {
+			oldCom := r.RaftLog.committed
+			r.updateCommitIndex()
+			if r.RaftLog.committed != oldCom {
+				for pr := range r.Prs {
+					if pr != r.id {
+						r.sendAppend(pr)
+					}
+				}
+			}
+		}
+	}
 }
 
 /*
